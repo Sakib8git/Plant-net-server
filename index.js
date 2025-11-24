@@ -1,7 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const admin = require("firebase-admin");
 const port = process.env.PORT || 3000;
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
@@ -16,11 +17,7 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "https://b12-m11-session.web.app",
-    ],
+    origin: [process.env.CLINT_DOMAIN],
     credentials: true,
     optionSuccessStatus: 200,
   })
@@ -63,13 +60,53 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/plants/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await plantsCollection.findOne(query);
+      res.send(result);
+    });
+
     app.post("/plants", async (req, res) => {
       const plantData = req.body;
       const result = await plantsCollection.insertOne(plantData);
       res.send(result);
     });
 
-    // !---------------------------------------------
+    //! paymen points
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = paymentInfo?.price * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "USD",
+              unit_amount: amount,
+              product_data: {
+                name: paymentInfo?.name,
+                discription: paymentInfo?.discription,
+                images: [paymentInfo?.image],
+              },
+            },
+            quantity: paymentInfo?.quantity,
+          },
+        ],
+        customer_email: paymentInfo.customer.email,
+        mode: "payment",
+        metadata: {
+          plantId: paymentInfo?.plantId,
+          customer: paymentInfo?.customer.email,
+        },
+        success_url: `${process.env.CLINT_DOMAIN}/paymentSuccess?success=true`,
+        cancel_url: `${process.env.CLINT_DOMAIN}/plant/${paymentInfo?.plantId}`,
+      });
+
+      // res.redirect(303, session.url);
+      res.send({ url: session.url });
+    });
+
+    // !---------------------------------
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
