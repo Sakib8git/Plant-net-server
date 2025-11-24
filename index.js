@@ -27,7 +27,7 @@ app.use(
 );
 app.use(express.json());
 
-// jwt middlewares
+// jwt middlewares.........
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(" ")[1];
   console.log(token);
@@ -52,7 +52,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 });
 async function run() {
-  try { 
+  try {
     // save plant data in Db
     const db = client.db("plantsDB");
     const plantsCollection = db.collection("plants");
