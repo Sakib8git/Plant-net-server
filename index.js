@@ -52,7 +52,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 });
 async function run() {
-  try {
+  try { 
     // save plant data in Db
     const db = client.db("plantsDB");
     const plantsCollection = db.collection("plants");
