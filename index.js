@@ -53,6 +53,7 @@ async function run() {
     // save plant data in Db
     const db = client.db("plantsDB");
     const plantsCollection = db.collection("plants");
+    const orderCollection = db.collection("orders");
 
     //?* plant data post
     app.get("/plants", async (req, res) => {
@@ -98,12 +99,82 @@ async function run() {
           plantId: paymentInfo?.plantId,
           customer: paymentInfo?.customer.email,
         },
-        success_url: `${process.env.CLINT_DOMAIN}/paymentSuccess?success=true`,
+        success_url: `${process.env.CLINT_DOMAIN}/paymentSuccess?session_id={CHECKOUT_SESSION_ID}`,
+        // success_url: `${process.env.CLINT_DOMAIN}/paymentSuccess?success=true`,
         cancel_url: `${process.env.CLINT_DOMAIN}/plant/${paymentInfo?.plantId}`,
       });
 
       // res.redirect(303, session.url);
       res.send({ url: session.url });
+    });
+    // payment sucess
+    app.post("/paymentSuccess", async (req, res) => {
+      const { sessionId } = req.body;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const plant = await plantsCollection.findOne({
+        _id: new ObjectId(session.metadata.plantId),
+      });
+      const order = await orderCollection.findOne({
+        transactionId: session.payment_intent,
+      });
+
+      if (session.status === "complete" && plant && !order) {
+        // save db
+        const orderInfo = {
+          plantId: session.metadata.plantId,
+          transactionId: session.payment_intent,
+          customer: session.metadata.customer,
+          status: "pending",
+          seller: plant.seller,
+          name: plant.name,
+          category: plant.category,
+          quantity: 1,
+          price: session.amount_total / 100,
+          image: plant?.image,
+        };
+        const result = await orderCollection.insertOne(orderInfo);
+        // update plant quentity
+        await plantsCollection.updateOne(
+          {
+            _id: new ObjectId(session.metadata.plantId),
+          },
+          {
+            $inc: { quantity: -1 },
+          }
+        );
+        return res.send({
+          transactionId: session.payment_intent,
+          orderId: result.insertedId,
+        });
+      }
+      res.send(
+        res.send({ transactionId: session.payment_intent, orderId: order._id })
+      );
+    });
+
+    // get all orders for a customer by email
+    app.get("/my-orders/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await orderCollection.find({ customer: email }).toArray();
+      res.send(result);
+    });
+
+    // get all plants of seller
+    app.get("/my-inventory/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await plantsCollection
+        .find({ "seller.email": email })
+        .toArray();
+      res.send(result);
+    });
+
+    // get all orders for seller
+    app.get("/manage-orders/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await orderCollection
+        .find({ "seller.email": email })
+        .toArray();
+      res.send(result);
     });
 
     // !---------------------------------
