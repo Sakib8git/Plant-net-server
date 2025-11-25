@@ -167,6 +167,15 @@ async function run() {
         .toArray();
       res.send(result);
     });
+    // delete inventory data
+    app.delete("/my-inventory/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await plantsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
 
     // get all orders for seller
     app.get("/manage-orders/:email", async (req, res) => {
