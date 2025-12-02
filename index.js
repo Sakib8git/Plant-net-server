@@ -54,6 +54,8 @@ async function run() {
     const db = client.db("plantsDB");
     const plantsCollection = db.collection("plants");
     const orderCollection = db.collection("orders");
+    const usersCollection = db.collection("users");
+    const sellerRequestCollection = db.collection("sellerRequest");
 
     //?* plant data post
     app.get("/plants", async (req, res) => {
@@ -153,8 +155,8 @@ async function run() {
     });
 
     // get all orders for a customer by email
-    app.get("/my-orders/:email", async (req, res) => {
-      const email = req.params.email;
+    app.get("/my-orders", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
       const result = await orderCollection.find({ customer: email }).toArray();
       res.send(result);
     });
@@ -186,6 +188,48 @@ async function run() {
       res.send(result);
     });
 
+    // !--save or update-----users--------------------
+
+    app.post("/user", async (req, res) => {
+      const userData = req.body;
+      userData.created_at = new Date().toISOString();
+      userData.last_login = new Date().toISOString();
+      userData.role = "customer";
+      const query = { email: userData.email };
+      const alreadyExit = await usersCollection.findOne(query);
+      // console.log("alerady exixt sir", !!alreadyExit);
+      if (alreadyExit) {
+        // console.log("updating info..............");
+        const result = await usersCollection.updateOne(query, {
+          $set: { last_login: new Date.toISOString() },
+        });
+        return res.send(result);
+      }
+      // console.log("saving new info..............");
+      const result = await usersCollection.insertOne(userData);
+      res.send(result);
+    });
+    // role------------/user/role/:email------
+    app.get("/user/role", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
+      const result = await usersCollection.findOne({ email });
+      res.send({ role: result?.role });
+    });
+    // seller req-------------
+    app.post("/become-seller", verifyJWT, async (req, res) => {
+      const email = req.tokenEmail;
+
+      const alreadyExit = await sellerRequestCollection.findOne({ email });
+
+      if (alreadyExit) {
+        return res
+          .status(403)
+          .send({ message: "Already requested, Wait for Admin review" });
+      }
+
+      const result = await sellerRequestCollection.insertOne({ email });
+      res.send(result);
+    });
     // !---------------------------------
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
